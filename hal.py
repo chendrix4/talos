@@ -2,8 +2,6 @@ import cv2
 import argparse
 import sys
 
-print(sys.version)
-
 """
 Theory of Operation
 
@@ -28,51 +26,62 @@ parser.add_argument("-v", help="Show video",
                           action="store_true")
 args = parser.parse_args()
 
+# Instantiate tracker, detection and camera
 tracker = None
 haar = cv2.CascadeClassifier('lib/python3.6/site-packages/cv2/data/' + args.f)
 cam  = cv2.VideoCapture(0)
 
+# Operational error handling
 MAX_MISSED = 10
-missed_det = 0
-failed_trk = False
+missed_detections = 0
+failed_track = False
+x=0; y=0; w=0; h=0;
 
 while 1:
     
-    # get next frame
+    # Get next frame
     ret, frame = cam.read()
     if not ret:
         break
 
-    # detection
+    # Detection - must run first
+    # This determines initial target location as well as
+    # prevents stationary targets from staying "hidden"
     faces = haar.detectMultiScale(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY),
                                   scaleFactor=1.1,
                                   minNeighbors=5)
-    
-    if len(faces) != 0 and not tracking:
+
+    # Get targets
+    # If faces found and not already tracking, get location
+    # If no faces found, there may be no one in frame (missed += 1)
+    if len(faces) > 0 and not tracking:
         x,y,w,h = faces[0]
-        missed = 0
+        missed_detections = 0
     else:
-        missed += 1
+        missed_detections += 1
 
     cv2.waitKey(1)
 
     # Show frame over target
+    # Green for found target, Red if no target found
     if args.v:
-        cv2.rectangle(frame,
-                      (x,y), (x+w,y+h),
-                      (0, 255*(missed < MAX_MISSED), 255*(missed >= MAX_MISSED)),
-                      2)
+        frame_color = (0,
+                       255*(missed_detections < MAX_MISSED),
+                       255*(missed_detections >= MAX_MISSED))
+        cv2.rectangle(frame, (x,y), (x+w,y+h), frame_color, 2)
         cv2.imshow('', frame)
-    if missed >= MAX_MISSED:
+
+    # Run another detection scan if missed MAX_MISSED times
+    if missed_detections >= MAX_MISSED:
         continue
     
-    # setup tracker
+    # Config tracker
     target = (x,y,w,h)
     if tracker == None:
-        tracker = getattr(cv2, 'Tracker%s_create' % (args.tracker,))()
+        tracker = getattr(cv2, f'Tracker{args.tracker}_create')()
         tracker.init(frame, target)
 
-    # tracking
+    # Track for 10 frames
     for f in range(10):
 
         _, frame = cam.read()
